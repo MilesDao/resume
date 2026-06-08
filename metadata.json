@@ -1,0 +1,6 @@
+{
+  "name": "Miles Dao Portfolio",
+  "description": "A minimalist, technical portfolio landing page for developer Miles Dao, styled in a bold, structured editorial layout.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

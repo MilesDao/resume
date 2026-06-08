@@ -1,0 +1,1117 @@
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { Asterisk, ArrowUpRight, Search, Mail, Cpu, ChevronRight, Terminal, Calendar } from "lucide-react";
+// @ts-ignore
+import { animate, createTimeline, stagger } from "animejs";
+
+import WireframeSphere from "./components/WireframeSphere";
+import Barcode from "./components/Barcode";
+import CommandPalette from "./components/CommandPalette";
+import PortraitWithKeypoints from "./components/PortraitWithKeypoints";
+import AdminModal from "./components/AdminModal";
+import { getProjects, getBlogs } from "./firebase";
+import { Project, Blog } from "./types";
+
+const TECH_STACKS = [
+  {
+    category: "FRONTEND // SPEC",
+    items: ["React (Version 19)", "TypeScript ESM", "Tailwind CSS v4", "Motion (Animate)", "D3.js / Recharts"]
+  },
+  {
+    category: "BACKEND // ENGINE",
+    items: ["Node.js Context", "Express Core", "RESTful Routing", "WASM Compilation", "Drizzle ORM"]
+  },
+  {
+    category: "INFRASTRUCTURE // DATA",
+    items: ["Cloud Run containers", "PostgreSQL", "Firebase DB / Firestore", "Vite Server Bundler", "Esbuild compiler"]
+  }
+];
+
+export default function App() {
+  const [activeModal, setActiveModal] = useState<string | null>(null);
+  const [selectedBlog, setSelectedBlog] = useState<Blog | null>(null);
+  const [currentTime, setCurrentTime] = useState("");
+  const [scrolled, setScrolled] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [blogs, setBlogs] = useState<Blog[]>([]);
+  const [revealedSections, setRevealedSections] = useState<Record<string, boolean>>({
+    "about-section": false,
+    "projects-section": false,
+    "blogs-section": false,
+    "contact-section": false,
+  });
+
+  // Contact section state variables
+  const [contactForm, setContactForm] = useState({ name: "", email: "", message: "" });
+  const [contactStep, setContactStep] = useState(0); // 0: Form, 1: Submitting, 2: Success
+  const [contactConsoleLines, setContactConsoleLines] = useState<string[]>([]);
+  const [contactProgress, setContactProgress] = useState(0);
+
+  // Load dynamic portfolio data from Firestore / LocalStorage
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const projs = await getProjects();
+        const blgs = await getBlogs();
+        setProjects(projs);
+        setBlogs(blgs);
+      } catch (err) {
+        console.error("Error loading data:", err);
+      }
+    };
+    loadData();
+  }, [activeModal]);
+
+  // Listen to browser forward/back buttons and load blog from query parameter
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const blogId = params.get("blog");
+      if (blogId) {
+        const blog = blogs.find((b) => b.id === blogId);
+        if (blog) {
+          setSelectedBlog(blog);
+        } else {
+          setSelectedBlog(null);
+        }
+      } else {
+        setSelectedBlog(null);
+      }
+    };
+
+    if (blogs.length > 0) {
+      handlePopState();
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [blogs]);
+
+  // Keep track of scroll for header styles
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // CMD + K listener for opening command palette search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setActiveModal((prev) => (prev === "search" ? null : "search"));
+      } else if (e.key === "Tab" && !activeModal) {
+        e.preventDefault();
+        scrollToSection("about-section");
+      } else if (e.key === "m" && !activeModal && e.target === document.body) {
+        e.preventDefault();
+        scrollToSection("contact-section");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeModal]);
+
+  // Set real-time clock indicator in UTC
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      const hrs = String(now.getUTCHours()).padStart(2, "0");
+      const mins = String(now.getUTCMinutes()).padStart(2, "0");
+      const secs = String(now.getUTCSeconds()).padStart(2, "0");
+      setCurrentTime(`${hrs}:${mins}:${secs} UTC`);
+    };
+    updateClock();
+    const interval = setInterval(updateClock, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Entrance animations on page load
+  useEffect(() => {
+    createTimeline({
+      defaults: { ease: 'easeOutExpo' }
+    })
+    .add('#logo-brand', {
+      opacity: [0, 1],
+      translateX: [-40, 0],
+      duration: 1000,
+      delay: 100
+    })
+    .add('#meta-navigation button', {
+      opacity: [0, 1],
+      translateY: [-20, 0],
+      delay: stagger(60),
+      duration: 800
+    }, '-=800')
+    .add('#quick-actions button', {
+      opacity: [0, 1],
+      translateX: [30, 0],
+      delay: stagger(80),
+      duration: 800
+    }, '-=800')
+    .add('#giant-name-header span', {
+      opacity: [0, 1],
+      translateY: [100, 0],
+      delay: stagger(150),
+      duration: 1000
+    }, '-=900')
+    .add('#hero-left-metadata, #cta-explore-btn', {
+      opacity: [0, 1],
+      translateY: [25, 0],
+      delay: stagger(100),
+      duration: 900
+    }, '-=700')
+    .add('#hero-right-visual', {
+      opacity: [0, 1],
+      scale: [0.97, 1],
+      duration: 1000
+    }, '-=850');
+  }, []);
+
+  // Scroll reveal animations
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const target = entry.target as HTMLElement;
+            const sectionId = target.id;
+
+            if (!revealedSections[sectionId]) {
+              setRevealedSections((prev) => ({ ...prev, [sectionId]: true }));
+
+              // Expand top border line
+              const line = target.querySelector(".expand-line");
+              if (line) {
+                animate(line, {
+                  width: ["0%", "100%"],
+                  easing: "easeOutQuart",
+                  duration: 1200
+                });
+              }
+
+              // Fade/slide header texts
+              const texts = target.querySelectorAll(".fade-text");
+              if (texts.length > 0) {
+                animate(texts, {
+                  opacity: [0, 1],
+                  translateX: [-25, 0],
+                  delay: stagger(60),
+                  easing: "easeOutQuart",
+                  duration: 900
+                });
+              }
+
+              // Stagger reveal child elements
+              const cards = target.querySelectorAll(".stagger-card");
+              if (cards.length > 0) {
+                animate(cards, {
+                  opacity: [0, 1],
+                  translateY: [40, 0],
+                  delay: stagger(120),
+                  easing: "easeOutQuad",
+                  duration: 900
+                });
+              }
+            }
+
+            observer.unobserve(target);
+          }
+        });
+      },
+      { threshold: 0.08 }
+    );
+
+    document.querySelectorAll(".reveal-section").forEach((el) => {
+      if (!revealedSections[el.id]) {
+        observer.observe(el);
+      }
+    });
+
+    return () => observer.disconnect();
+  }, [projects, blogs, revealedSections]);
+
+  // Smooth scroll using anime.js
+  const scrollToSection = (sectionId: string) => {
+    const target = document.getElementById(sectionId);
+    if (target) {
+      const headerOffset = 85;
+      const elementPosition = target.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+      animate([document.documentElement, document.body], {
+        scrollTop: offsetPosition,
+        duration: 900,
+        easing: "easeInOutCubic"
+      });
+    }
+  };
+
+  const handleAction = (actionKey: string) => {
+    if (actionKey === "work") scrollToSection("projects-section");
+    else if (actionKey === "about") scrollToSection("about-section");
+    else if (actionKey === "contact") scrollToSection("contact-section");
+    else if (actionKey === "blog") scrollToSection("blogs-section");
+  };
+
+  const handleContactChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setContactForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const executeContactPipeline = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contactForm.name || !contactForm.email || !contactForm.message) return;
+
+    setContactStep(1);
+    setContactConsoleLines(["INITIALIZING SECURE TRANSPORT LAYER PROTOCOL..."]);
+
+    const logs = [
+      "RESOLVING TARGET ENDPOINT: TRUNGDAO131105@GMAIL.COM...",
+      "ESTABLISHING SSL HANDSHAKE [ECDHE-RSA-AES128-GCM-SHA256]...",
+      "CREATING DATASTREAM CHUNK...",
+      `ENCRYPTING MESSAGE DATA FROM <${contactForm.email}>...`,
+      "COMPILED SPECS VERIFIED. WRITING STRUCTURAL PAYLOAD...",
+      "PUSHING TO DATALAKE PIPELINE: SUCCESS [200 OK]"
+    ];
+
+    for (let i = 0; i < logs.length; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      setContactConsoleLines((prev) => [...prev, logs[i]]);
+      setContactProgress(((i + 1) / logs.length) * 100);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    setContactStep(2);
+  };
+
+  const handleContactReset = () => {
+    setContactForm({ name: "", email: "", message: "" });
+    setContactConsoleLines([]);
+    setContactStep(0);
+    setContactProgress(0);
+  };
+
+  const handleBackToPortfolio = () => {
+    if (window.history.state && window.history.state.blogId) {
+      window.history.back();
+    } else {
+      window.history.pushState(null, "", window.location.pathname);
+      setSelectedBlog(null);
+    }
+  };
+
+  const isAboutRevealed = revealedSections["about-section"];
+  const isProjectsRevealed = revealedSections["projects-section"];
+  const isBlogsRevealed = revealedSections["blogs-section"];
+  const isContactRevealed = revealedSections["contact-section"];
+
+  return (
+    <div className="relative min-h-screen bg-[#ebeae4] text-[#111111] overflow-x-hidden selection:bg-neutral-900 selection:text-[#ebeae4]">
+      {/* Dynamic Animated Grain Overlay */}
+      <div className="noise-overlay" />
+
+      {/* ==================== MAIN PORTFOLIO PAGE ==================== */}
+      <motion.div
+        key="main-portfolio-page"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
+        className="w-full min-h-screen flex flex-col justify-between p-4 md:p-8 lg:p-10 select-none"
+      >
+        {/* ==================== STICKY HEADER SECTION ==================== */}
+        <header
+          id="main-app-header"
+          className={`sticky top-0 w-full flex justify-between items-center z-40 py-4 border-b transition-all duration-300 bg-[#ebeae4]/90 backdrop-blur-md ${
+            scrolled ? "border-neutral-300/80 shadow-sm" : "border-transparent"
+          }`}
+        >
+          {/* Top Left logo structured exactly like MUGA ZERO */}
+          <div
+            id="logo-brand"
+            onClick={() => scrollToSection("about-section")}
+            className="flex flex-col font-display font-black leading-[0.8] text-sm md:text-base cursor-pointer tracking-tight select-none hover:opacity-80 transition-opacity"
+          >
+            <span>MILES</span>
+            <span>DAO</span>
+          </div>
+
+          {/* Central Menus with smooth scrolling navigation */}
+          <nav id="meta-navigation" className="hidden md:flex items-center gap-8 lg:gap-12">
+            <button
+              id="nav-pf26"
+              onClick={() => scrollToSection("projects-section")}
+              className="font-mono text-xs tracking-wider text-neutral-800 hover:text-neutral-950 font-medium relative group"
+            >
+              PF—26
+              <span className="absolute left-0 right-0 -bottom-1 h-[1px] bg-neutral-950 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-200" />
+            </button>
+            <button
+              id="nav-work"
+              onClick={() => scrollToSection("projects-section")}
+              className="font-mono text-xs tracking-wider text-neutral-800 hover:text-neutral-950 font-medium relative group"
+            >
+              WORK
+              <span className="absolute left-0 right-0 -bottom-1 h-[1px] bg-neutral-950 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-200" />
+            </button>
+            <button
+              id="nav-blog"
+              onClick={() => scrollToSection("blogs-section")}
+              className="font-mono text-xs tracking-wider text-neutral-800 hover:text-neutral-950 font-medium relative group"
+            >
+              BLOG
+              <span className="absolute left-0 right-0 -bottom-1 h-[1px] bg-neutral-950 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-200" />
+            </button>
+            <button
+              id="nav-about"
+              onClick={() => scrollToSection("about-section")}
+              className="font-mono text-xs tracking-wider text-neutral-800 hover:text-neutral-950 font-medium relative group"
+            >
+              ABOUT
+              <span className="absolute left-0 right-0 -bottom-1 h-[1px] bg-neutral-950 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-200" />
+            </button>
+            <button
+              id="nav-contact"
+              onClick={() => scrollToSection("contact-section")}
+              className="font-mono text-xs tracking-wider text-neutral-800 hover:text-neutral-950 font-medium relative group"
+            >
+              CONTACT
+              <span className="absolute left-0 right-0 -bottom-1 h-[1px] bg-neutral-950 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-200" />
+            </button>
+          </nav>
+
+          {/* Right Menus with exact character mapping */}
+          <div id="quick-actions" className="flex items-center gap-6 md:gap-8 lg:gap-10">
+            <button
+              id="action-search"
+              onClick={() => setActiveModal("search")}
+              className="flex items-center gap-1.5 font-mono text-xs tracking-wider text-neutral-800 hover:text-neutral-950 font-medium hover:underline"
+            >
+              <Search size={12} />
+              SEARCH
+            </button>
+            <button
+              id="action-admin"
+              onClick={() => setActiveModal("admin")}
+              className="font-mono text-xs tracking-wider text-[#ebeae4] bg-neutral-950 px-3 py-1 rounded-sm hover:bg-neutral-800 transition-all font-bold cursor-pointer"
+            >
+              ADMIN
+            </button>
+          </div>
+        </header>
+
+        {/* ==================== HERO CONTENT SECTION ==================== */}
+        <main className="w-full grid grid-cols-12 gap-y-12 md:gap-4 mt-12 md:mt-16 mb-24 pt-4">
+
+          {/* LEFT AREA: Subtitle Paragraph & Massive MUGA ZERO styling for Miles Dao */}
+          <section className="col-span-12 md:col-span-7 flex flex-col justify-start items-start text-left pt-2 md:pt-4">
+
+            {/* Top Technical subtitle header */}
+            <div className="flex items-start gap-3 md:gap-4 mb-6 md:mb-8 select-none">
+              {/* Outer double-line asterisk symbol rotating slowly */}
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 15, ease: "linear" }}
+                className="w-8 h-8 rounded-full border border-neutral-600 flex items-center justify-center text-neutral-900 border-dashed"
+              >
+                <Asterisk size={16} strokeWidth={1.5} />
+              </motion.div>
+
+              {/* Two lines exactly 22 and 20 character length variables */}
+              <div className="font-mono text-[10px] md:text-xs leading-normal text-neutral-600">
+                <p className="tracking-wide">ENGINEERED FOR MODERN.</p>
+                <p className="tracking-wide">DESIGNED TO INSPIRE.</p>
+              </div>
+            </div>
+
+            {/* Giant Title blocks replicating heavy compressed type exactly */}
+            <div
+              id="giant-name-header"
+              className="w-full font-display font-black text-neutral-900 leading-[0.73] uppercase tracking-[-0.08em] flex flex-col pt-2 select-none"
+            >
+              <span className="text-[10.5vw] md:text-[5.8rem] lg:text-[8.2rem] xl:text-[9.3rem] h-[8.8vw] md:h-[5.0rem] lg:h-[7.0rem] xl:h-[8.0rem] transform scale-y-[1.25] origin-top textured-text">
+                MILES
+              </span>
+              <span className="text-[10.5vw] md:text-[5.8rem] lg:text-[8.2rem] xl:text-[9.3rem] h-[8.8vw] md:h-[5.0rem] lg:h-[7.0rem] xl:h-[8.2rem] transform scale-y-[1.25] origin-top textured-text">
+                DAO
+              </span>
+            </div>
+
+            {/* Bottom Row containing metadata & cta button on the left, and technical specs & wireframe sphere on the right */}
+            <div className="w-full flex flex-col sm:flex-row items-end justify-between gap-8 mt-6 md:mt-8 mb-4 pt-4 border-t border-neutral-350">
+              
+              {/* Left Side: Metadata and CTA Button */}
+              <div id="hero-left-metadata" className="flex flex-col items-start text-left gap-6">
+                <div className="font-mono text-[11px] md:text-xs leading-relaxed text-neutral-700 space-y-0.5">
+                  <p className="tracking-wide">FULL STACK SOFTWARE CREATOR</p>
+                  <p className="tracking-wide text-neutral-500">BUILT FOR WEB.</p>
+                  <p className="tracking-wide text-neutral-500">READY FOR DEVS.</p>
+                </div>
+
+                <button
+                  id="cta-explore-btn"
+                  onClick={() => scrollToSection("projects-section")}
+                  className="group relative flex items-center gap-10 bg-neutral-950 text-[#ebeae4] hover:bg-[#ebeae4] hover:text-neutral-950 border-2 border-neutral-950 px-6 py-3.5 rounded-sm font-mono text-xs font-bold transition-all duration-300 shadow-sm cursor-pointer overflow-hidden uppercase"
+                >
+                  <span className="relative z-10 flex items-center gap-10">
+                    EXPLORE MD—26 <ArrowUpRight size={14} className="group-hover:rotate-45 transition-transform duration-300" />
+                  </span>
+                  <span className="absolute inset-x-0 bottom-0 top-full bg-[#ebeae4] group-hover:top-0 transition-all duration-300 z-0" />
+                </button>
+              </div>
+
+              {/* Right Side: Rotating 3D high precision wireframe and technical specification cards */}
+              <div className="flex flex-col items-end gap-2">
+                {/* Ellipsoid Sphere */}
+                <div className="mr-[-10px] sm:mr-0 scale-90 origin-bottom-right">
+                  <WireframeSphere />
+                </div>
+
+                {/* Badges alignment and barcode layout */}
+                <div className="flex items-end justify-between gap-6 md:gap-10 pt-2 border-t border-neutral-300 select-none">
+                  {/* Specs text cards */}
+                  <div className="text-left font-mono text-[10px] tracking-wide text-neutral-600 space-y-0.5">
+                    <div>
+                      <span className="text-neutral-400">BUILT ON </span>
+                      <span className="text-neutral-900 font-bold">NEXTJS.</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400">DEFINED BY </span>
+                      <span className="text-neutral-900 font-bold">MILES DAO</span>
+                    </div>
+                    <div className="flex items-center gap-1 pt-0.5 font-extrabold text-[#111111]">
+                      <span>MD-00/26</span>
+                      <ChevronRight size={10} className="text-neutral-900" />
+                    </div>
+                  </div>
+
+                  {/* Vertical detail indicator and horizontal barcode */}
+                  <div className="flex flex-col items-end gap-1.5 select-none text-right">
+                    <span className="font-mono text-[9px] text-neutral-400 tracking-widest uppercase bg-neutral-200 px-1 py-0.5 rounded">
+                      MILES DAO™
+                    </span>
+                    <Barcode id="specs-horizontal-barcode" width={100} height={16} linesCount={36} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </section>
+
+          {/* RIGHT AREA: Target frame, coordinates, and large portrait viewport */}
+          <section id="hero-right-visual" className="col-span-12 md:col-span-5 flex flex-col justify-start items-end text-right h-full py-2">
+            {/* Mid-Right portrait with keypoints */}
+            <div className="w-full flex justify-end my-4 md:my-6">
+              <PortraitWithKeypoints />
+            </div>
+          </section>
+
+        </main>
+
+        {/* ==================== ABOUT SECTION ==================== */}
+        <section
+          id="about-section"
+          className="reveal-section w-full pt-20 pb-24 border-t border-transparent relative"
+        >
+          {/* Expanding border line */}
+          <div className={`expand-line h-[2px] bg-neutral-950 mb-12 transition-all duration-1000 ${isAboutRevealed ? "w-full" : "w-0"}`} />
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-10">
+            {/* Left side: Heading, Bio, Links */}
+            <div className="md:col-span-5 flex flex-col justify-between gap-10 text-left">
+              <div>
+                <p className={`fade-text font-mono text-xs tracking-widest text-neutral-500 uppercase mb-2 ${isAboutRevealed ? "opacity-100" : "opacity-0"}`}>
+                  EX—26 // IDENTITY INDEX
+                </p>
+                <h2 className={`fade-text font-display text-4xl font-black tracking-tight text-neutral-900 mb-6 uppercase ${isAboutRevealed ? "opacity-100" : "opacity-0"}`}>
+                  MILES DAO // SPEC
+                </h2>
+                <div className={`fade-text border-l-4 border-neutral-950 pl-4 py-2 mb-8 ${isAboutRevealed ? "opacity-100" : "opacity-0"}`}>
+                  <p className="text-neutral-700 text-sm md:text-base leading-relaxed max-w-md font-medium">
+                    I'm an undergraduate data scientist passionate about data and machine learning. Building insightful data solutions.
+                  </p>
+                </div>
+              </div>
+
+              {/* System Outbound Ports */}
+              <div className={`fade-text ${isAboutRevealed ? "opacity-100" : "opacity-0"}`}>
+                <h3 className="font-mono text-xs font-bold text-neutral-400 uppercase tracking-widest mb-4">
+                  SYSTEM OUTBOUND LINK PORTS
+                </h3>
+                <div className="flex flex-col gap-3 max-w-sm">
+                  <a
+                    href="mailto:trungdao131105@gmail.com"
+                    className="flex items-center gap-3 border border-neutral-900 px-4 py-3 bg-neutral-200/50 rounded hover:bg-neutral-950 hover:text-[#ebeae4] transition-all font-mono text-xs font-bold group"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-950 group-hover:bg-neutral-100" />
+                    <span>EMAIL PORT // trungdao131105@gmail.com</span>
+                  </a>
+                  <a
+                    href="https://github.com/MilesDao"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 border border-neutral-900 px-4 py-3 bg-neutral-200/50 rounded hover:bg-neutral-950 hover:text-[#ebeae4] transition-all font-mono text-xs font-bold group"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-950 group-hover:bg-neutral-100" />
+                    <span>GITHUB PORT // @MilesDao</span>
+                  </a>
+                  <a
+                    href="https://www.linkedin.com/in/milesdao/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 border border-neutral-900 px-4 py-3 bg-neutral-200/50 rounded hover:bg-neutral-950 hover:text-[#ebeae4] transition-all font-mono text-xs font-bold group"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-950 group-hover:bg-neutral-100" />
+                    <span>LINKEDIN PORT // @milesdao</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Right side: Tech Specifications */}
+            <div className="md:col-span-7 space-y-6 text-left">
+              <h3 className={`fade-text font-mono text-xs font-bold text-neutral-400 uppercase tracking-widest border-b border-neutral-300 pb-2 mb-4 ${isAboutRevealed ? "opacity-100" : "opacity-0"}`}>
+                SYSTEM SPEC METADATA
+              </h3>
+
+              <div className="space-y-4">
+                {TECH_STACKS.map((stack, idx) => (
+                  <div
+                    key={idx}
+                    className={`stagger-card border border-neutral-350 rounded overflow-hidden bg-neutral-200/20 hover:border-neutral-950 transition-colors duration-300 shadow-sm ${isAboutRevealed ? "opacity-100" : "opacity-0"}`}
+                  >
+                    <div className="bg-neutral-950 text-[#ebeae4] px-4 py-2.5 font-mono text-[10px] tracking-wider uppercase font-bold flex justify-between items-center">
+                      <span>{stack.category}</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    </div>
+                    <div className="bg-neutral-50/70 p-4">
+                      <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {stack.items.map((item, idy) => (
+                          <li key={idy} className="flex items-center gap-2 font-mono text-xs text-neutral-700">
+                            <span className="w-1 h-1 bg-neutral-400 rounded-full" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ==================== PROJECTS SECTION ==================== */}
+        <section
+          id="projects-section"
+          className="reveal-section w-full pt-20 pb-24 border-t border-transparent relative text-left"
+        >
+          {/* Expanding border line */}
+          <div className={`expand-line h-[2px] bg-neutral-950 mb-12 transition-all duration-1000 ${isProjectsRevealed ? "w-full" : "w-0"}`} />
+
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-4">
+            <div>
+              <p className={`fade-text font-mono text-xs tracking-widest text-neutral-500 uppercase mb-2 ${isProjectsRevealed ? "opacity-100" : "opacity-0"}`}>
+                EX—26 // PORTFOLIO SERIES
+              </p>
+              <h2 className={`fade-text font-display text-4xl font-black tracking-tight text-neutral-900 uppercase ${isProjectsRevealed ? "opacity-100" : "opacity-0"}`}>
+                CORE WORK INDEX
+              </h2>
+            </div>
+            <p className={`fade-text text-neutral-500 font-mono text-[9px] font-semibold tracking-wider ${isProjectsRevealed ? "opacity-100" : "opacity-0"}`}>
+              SCROLL HORIZONTALLY TO EXPLORE // CHRONICLES
+            </p>
+          </div>
+
+          {/* Horizontal projects scroller list */}
+          <div className="mt-10 overflow-x-auto pb-6 scroll-smooth snap-x snap-mandatory flex gap-6 px-1">
+            {projects.length === 0 ? (
+              <p className="font-mono text-xs text-neutral-500 py-12 text-center w-full border border-dashed border-neutral-350 rounded bg-neutral-200/10">
+                NO PROJECTS REGISTERED IN PERSISTENT VECTOR.
+              </p>
+            ) : (
+              projects.map((proj) => (
+                <div
+                  key={proj.id}
+                  className={`stagger-card snap-start w-[290px] sm:w-[350px] flex-shrink-0 group border-2 border-neutral-900 rounded-lg bg-neutral-50 hover:bg-white transition-all duration-300 flex flex-col justify-between overflow-hidden shadow-md hover:-translate-y-1 ${isProjectsRevealed ? "opacity-100" : "opacity-0"}`}
+                >
+                  <div>
+                    {/* Project Image */}
+                    <div className="h-44 w-full overflow-hidden border-b border-neutral-900 bg-neutral-200 relative">
+                      {proj.image ? (
+                        <img src={proj.image} alt={proj.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center font-mono text-neutral-400 text-[10px]">
+                          [NO_VISUAL_STREAM]
+                        </div>
+                      )}
+                      <span className="absolute top-3 left-3 font-mono text-[9px] text-[#ebeae4] bg-neutral-950 px-2 py-0.5 rounded font-bold">
+                        {proj.year}
+                      </span>
+                    </div>
+
+                    <div className="p-5 text-left">
+                      <span className="font-mono text-[9px] tracking-wider uppercase text-neutral-400 font-bold block mb-1">
+                        {proj.category}
+                      </span>
+                      <h3 className="font-display text-lg font-black tracking-tight text-neutral-950 line-clamp-1">
+                        {proj.title}
+                      </h3>
+                      <p className="text-neutral-600 text-xs mt-2.5 leading-relaxed line-clamp-3">
+                        {proj.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="px-5 pb-5 pt-2 flex flex-col gap-3">
+                    <div className="flex flex-wrap gap-1">
+                      {proj.tags.slice(0, 3).map((tag) => (
+                        <span
+                          key={tag}
+                          className="font-mono text-[9px] text-neutral-500 border border-neutral-300 bg-neutral-100/50 rounded px-1.5 py-0.5"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                      {proj.tags.length > 3 && (
+                        <span className="font-mono text-[9px] text-neutral-400 px-1 py-0.5">
+                          +{proj.tags.length - 3}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end pt-2 border-t border-dashed border-neutral-300">
+                      <a
+                        href={proj.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-mono text-[10px] font-black text-neutral-800 hover:text-neutral-950 hover:underline cursor-pointer"
+                      >
+                        LAUNCH DEPLOY <ArrowUpRight size={10} />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        {/* ==================== BLOG SECTION ==================== */}
+        <section
+          id="blogs-section"
+          className="reveal-section w-full pt-20 pb-24 border-t border-transparent relative text-left"
+        >
+          {/* Expanding border line */}
+          <div className={`expand-line h-[2px] bg-neutral-950 mb-12 transition-all duration-1000 ${isBlogsRevealed ? "w-full" : "w-0"}`} />
+
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-4">
+            <div>
+              <p className={`fade-text font-mono text-xs tracking-widest text-neutral-500 uppercase mb-2 ${isBlogsRevealed ? "opacity-100" : "opacity-0"}`}>
+                EX—26 // TECHNICAL JOURNAL
+              </p>
+              <h2 className={`fade-text font-display text-4xl font-black tracking-tight text-neutral-900 uppercase ${isBlogsRevealed ? "opacity-100" : "opacity-0"}`}>
+                BLOG REGISTERS
+              </h2>
+            </div>
+            <p className={`fade-text text-neutral-550 font-mono text-[9px] font-semibold tracking-wider ${isBlogsRevealed ? "opacity-100" : "opacity-0"}`}>
+              CLICK AN ENTRY TO READ FULL SPEC ARCHIVE // METRICS
+            </p>
+          </div>
+
+          {/* Horizontal blogs scroller list */}
+          <div className="mt-10 overflow-x-auto pb-6 scroll-smooth snap-x snap-mandatory flex gap-6 px-1">
+            {blogs.length === 0 ? (
+              <p className="font-mono text-xs text-neutral-500 py-12 text-center w-full border border-dashed border-neutral-350 rounded bg-neutral-200/10">
+                NO JOURNAL REGISTERS IN MEMORY VECTOR.
+              </p>
+            ) : (
+              blogs.map((blog) => (
+                <div
+                  key={blog.id}
+                  onClick={() => {
+                    window.history.pushState({ blogId: blog.id }, "", `?blog=${blog.id}`);
+                    setSelectedBlog(blog);
+                  }}
+                  className={`stagger-card snap-start w-[290px] sm:w-[350px] flex-shrink-0 group border-2 border-neutral-900 rounded-lg bg-neutral-50 hover:bg-white transition-all duration-300 flex flex-col justify-between overflow-hidden shadow-md cursor-pointer hover:-translate-y-1 text-left ${isBlogsRevealed ? "opacity-100" : "opacity-0"}`}
+                >
+                  <div>
+                    {/* Blog Image */}
+                    <div className="h-44 w-full overflow-hidden border-b border-neutral-900 bg-neutral-200 relative">
+                      {blog.image ? (
+                        <img src={blog.image} alt={blog.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center font-mono text-neutral-400 text-[10px]">
+                          [NO_VISUAL_STREAM]
+                        </div>
+                      )}
+                      <span className="absolute top-3 left-3 font-mono text-[9px] text-[#ebeae4] bg-neutral-950 px-2 py-0.5 rounded font-bold">
+                        {blog.date}
+                      </span>
+                    </div>
+
+                    <div className="p-5">
+                      <span className="font-mono text-[9px] tracking-wider uppercase text-neutral-400 font-bold block mb-1">
+                        {blog.category}
+                      </span>
+                      <h3 className="font-display text-lg font-black tracking-tight text-neutral-950 line-clamp-1">
+                        {blog.title}
+                      </h3>
+                      <p className="text-neutral-500 font-mono text-[10px] mt-2 font-semibold line-clamp-1 border-l-2 border-neutral-400 pl-2">
+                        {blog.summary}
+                      </p>
+                      <p className="text-neutral-600 text-xs mt-3 leading-relaxed line-clamp-2">
+                        {blog.content}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="px-5 pb-5 pt-2 flex flex-col gap-3">
+                    <div className="flex flex-wrap gap-1">
+                      {blog.tags.slice(0, 3).map((tag) => (
+                        <span
+                          key={tag}
+                          className="font-mono text-[9px] text-neutral-500 border border-neutral-300 bg-neutral-100/50 rounded px-1.5 py-0.5"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                      {blog.tags.length > 3 && (
+                        <span className="font-mono text-[9px] text-neutral-400 px-1 py-0.5">
+                          +{blog.tags.length - 3}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end pt-2 border-t border-dashed border-neutral-300">
+                      <span className="inline-flex items-center gap-1 font-mono text-[10px] font-black text-neutral-800 group-hover:text-neutral-950 group-hover:underline">
+                        READ ARTICLE <ArrowUpRight size={10} />
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        {/* ==================== CONTACT SECTION ==================== */}
+        <section
+          id="contact-section"
+          className="reveal-section w-full pt-20 pb-24 border-t border-transparent relative text-left"
+        >
+          {/* Expanding border line */}
+          <div className={`expand-line h-[2px] bg-neutral-950 mb-12 transition-all duration-1000 ${isContactRevealed ? "w-full" : "w-0"}`} />
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-10">
+            {/* Left side header */}
+            <div className="md:col-span-5 flex flex-col justify-between gap-8">
+              <div>
+                <p className={`fade-text font-mono text-xs tracking-widest text-neutral-500 uppercase mb-2 ${isContactRevealed ? "opacity-100" : "opacity-0"}`}>
+                  SECURE STREAM PIPELINE // TX // TRUNGDAO131105@GMAIL.COM
+                </p>
+                <h2 className={`fade-text font-display text-4xl font-black tracking-tight text-[#111111] uppercase mb-4 ${isContactRevealed ? "opacity-100" : "opacity-0"}`}>
+                  CONTACT SYSTEM
+                </h2>
+                <p className={`fade-text text-neutral-600 text-sm leading-relaxed max-w-sm ${isContactRevealed ? "opacity-100" : "opacity-0"}`}>
+                  Initiate a secure data transfer directly to my inbox. Enter your parameters and execute the transmission pipeline.
+                </p>
+              </div>
+
+              <div className={`fade-text hidden md:block ${isContactRevealed ? "opacity-100" : "opacity-0"}`}>
+                <Barcode id="contact-section-barcode" width={140} height={20} linesCount={45} />
+                <p className="font-mono text-[9px] text-neutral-400 mt-1 uppercase">SECURE TRANSFER PORTAL 26</p>
+              </div>
+            </div>
+
+            {/* Right side form / console */}
+            <div className={`md:col-span-7 bg-neutral-900 border border-neutral-950 p-6 md:p-8 rounded-lg shadow-lg stagger-card text-[#ebeae4] ${isContactRevealed ? "opacity-100" : "opacity-0"}`}>
+              <AnimatePresence mode="wait">
+                {contactStep === 0 && (
+                  <motion.form
+                    id="contact-section-form"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onSubmit={executeContactPipeline}
+                    className="space-y-5"
+                  >
+                    <div>
+                      <label className="block font-mono text-[10px] tracking-wider text-neutral-400 uppercase mb-1.5">
+                        IDENTIFIER NAME [INPUT]
+                      </label>
+                      <input
+                        id="contact-section-name"
+                        type="text"
+                        name="name"
+                        required
+                        value={contactForm.name}
+                        onChange={handleContactChange}
+                        placeholder="E.G., JOHN DOE"
+                        className="w-full bg-neutral-950 border border-neutral-700 rounded px-4 py-3 font-mono text-xs text-[#ebeae4] focus:border-green-400 focus:outline-none transition-colors uppercase placeholder-neutral-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-mono text-[10px] tracking-wider text-neutral-400 uppercase mb-1.5">
+                        EMAIL VECTOR [ROUTE]
+                      </label>
+                      <input
+                        id="contact-section-email"
+                        type="email"
+                        name="email"
+                        required
+                        value={contactForm.email}
+                        onChange={handleContactChange}
+                        placeholder="E.G., DEVS@DOMAIN.COM"
+                        className="w-full bg-neutral-950 border border-neutral-700 rounded px-4 py-3 font-mono text-xs text-[#ebeae4] focus:border-green-400 focus:outline-none transition-colors uppercase placeholder-neutral-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-mono text-[10px] tracking-wider text-neutral-400 uppercase mb-1.5">
+                        TRANSMISSION MESSAGE [PAYLOAD]
+                      </label>
+                      <textarea
+                        id="contact-section-message"
+                        name="message"
+                        required
+                        rows={4}
+                        value={contactForm.message}
+                        onChange={handleContactChange}
+                        placeholder="ENTER DETAILED LOGICAL PROPOSAL..."
+                        className="w-full bg-neutral-950 border border-neutral-700 rounded px-4 py-3 font-mono text-xs text-[#ebeae4] focus:border-green-400 focus:outline-none transition-colors uppercase placeholder-neutral-700 resize-none"
+                      />
+                    </div>
+
+                    <button
+                      id="contact-section-submit"
+                      type="submit"
+                      className="w-full flex items-center justify-center gap-2 bg-[#ebeae4] hover:bg-white text-neutral-950 font-mono text-xs font-black py-3.5 px-6 rounded uppercase transition-colors cursor-pointer"
+                    >
+                      INITIALIZE PIPE TRANSMISSION
+                    </button>
+                  </motion.form>
+                )}
+
+                {contactStep === 1 && (
+                  <motion.div
+                    key="section-pipeline-submitting"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="space-y-5"
+                  >
+                    <div className="bg-neutral-950 border border-neutral-800 rounded p-4 font-mono text-[10px] text-green-400 space-y-2 h-64 overflow-y-auto">
+                      {contactConsoleLines.map((line, idx) => (
+                        <div key={idx} className="flex items-start gap-1">
+                          <span className="text-neutral-600">&gt;</span>
+                          <p>{line}</p>
+                        </div>
+                      ))}
+                      <div className="w-2 h-4 bg-green-400 animate-pulse inline-block" />
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between font-mono text-[10px] text-neutral-400">
+                        <span>TRANSMITTING ENCRYPTED STREAMS</span>
+                        <span>{Math.round(contactProgress)}%</span>
+                      </div>
+                      <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full bg-green-400"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${contactProgress}%` }}
+                          transition={{ duration: 0.2 }}
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {contactStep === 2 && (
+                  <motion.div
+                    key="section-pipeline-success"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="text-center py-6 space-y-5 flex flex-col items-center justify-center h-full"
+                  >
+                    <span className="w-12 h-12 rounded-full border-2 border-green-400 flex items-center justify-center text-green-400 font-bold text-xl animate-bounce">✓</span>
+                    <div className="space-y-2">
+                      <p className="font-display text-xl font-black text-neutral-100 uppercase">
+                        DATA STREAM WRITE STATUS OK
+                      </p>
+                      <p className="font-mono text-neutral-400 text-[11px] max-w-sm mx-auto uppercase">
+                        Your transmission was successfully cached and piped securely. I will monitor this segment vector and respond shortly.
+                      </p>
+                    </div>
+
+                    <div className="border border-neutral-800 bg-neutral-950 p-4 rounded text-left font-mono text-[10px] space-y-1 text-neutral-400 max-w-sm w-full">
+                      <p className="text-[#ebeae4] font-bold">TRANSMISSION HEADER ID:</p>
+                      <p>M-DAO-{(Math.random() * 10000000).toFixed(0)}</p>
+                      <p className="pt-2 text-[#ebeae4] font-bold">ROUTED TARGET ENDPOINT:</p>
+                      <p>TRUNGDAO131105@GMAIL.COM</p>
+                      <p className="pt-2 text-[#ebeae4] font-bold">HOST VECTOR TIMESTAMP:</p>
+                      <p>{new Date().toISOString()}</p>
+                    </div>
+
+                    <button
+                      id="section-reset-contact"
+                      onClick={handleContactReset}
+                      className="bg-neutral-850 hover:bg-neutral-750 border border-neutral-700 text-[#ebeae4] font-mono text-xs px-5 py-2.5 rounded uppercase transition-colors cursor-pointer"
+                    >
+                      COMPILE NEW PAYLOAD
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        </section>
+
+        {/* ==================== FOOTER SECTION ==================== */}
+        <footer
+          id="main-app-footer"
+          className="w-full flex justify-between items-end pt-8 pb-4 border-t border-neutral-300 z-40 select-none"
+        >
+          {/* Vertical barcode block on bottom left */}
+          <div className="flex items-end gap-4">
+            <div className="relative h-12 w-3 flex items-center justify-center overflow-hidden">
+              <Barcode id="footer-vertical-barcode" vertical width={48} height={12} linesCount={24} />
+            </div>
+
+            <div className="flex flex-col text-left">
+              <span className="font-mono text-[9px] md:text-[10px] tracking-widest text-neutral-500 leading-tight">
+                MILES DAO PORTFOLIO 26
+              </span>
+              <span className="font-mono text-[10px] md:text-xs text-neutral-900 font-medium mt-1">
+                ©2026 MILES DAO ™
+              </span>
+              <div className="flex gap-3 mt-1.5 font-mono text-[9px] text-neutral-500 font-semibold tracking-wider">
+                <a href="mailto:trungdao131105@gmail.com" className="hover:text-neutral-950 hover:underline">EMAIL</a>
+                <span>/</span>
+                <a href="https://github.com/MilesDao" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-950 hover:underline">GHUB</a>
+                <span>/</span>
+                <a href="https://www.linkedin.com/in/milesdao/" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-950 hover:underline">LNKD</a>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom center System Ready status */}
+          <div className="hidden sm:flex items-center gap-2 font-mono text-[10px] tracking-widest text-[#111111] uppercase font-bold pr-16">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping inline-block" />
+            <span>SYSTEM READY</span>
+            <Asterisk size={10} className="text-neutral-400" />
+          </div>
+
+          {/* Quick interactive shortcut help */}
+          <div className="font-mono text-[9px] text-neutral-400 text-right leading-relaxed hidden md:block">
+            <p>PRESS <span className="text-neutral-900 font-bold bg-neutral-200 px-1 py-0.5 rounded">CMD + K</span> TO QUERY OPTIONS</p>
+            <p>PRESS <span className="text-neutral-900 font-bold bg-neutral-200 px-1 py-0.5 rounded">TAB</span> TO READ BIO SPECS</p>
+          </div>
+        </footer>
+      </motion.div>
+
+      {/* ==================== DEDICATED BLOG READER OVERLAY ==================== */}
+      <AnimatePresence>
+        {selectedBlog && (
+          <motion.div
+            key="blog-reader-page"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 30 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+            className="fixed inset-0 z-50 bg-[#ebeae4] text-[#111111] overflow-y-auto p-6 md:p-16 flex flex-col justify-between select-text"
+          >
+            <div>
+              {/* Back Button / Top Bar */}
+              <header className="w-full flex justify-between items-center z-40 py-4 border-b border-neutral-900 mb-10">
+                <div
+                  onClick={handleBackToPortfolio}
+                  className="flex flex-col font-display font-black leading-[0.8] text-sm md:text-base cursor-pointer tracking-tight hover:opacity-80 transition-opacity"
+                >
+                  <span>MILES</span>
+                  <span>DAO</span>
+                </div>
+                <button
+                  onClick={handleBackToPortfolio}
+                  className="flex items-center gap-2 font-mono text-xs font-bold border border-neutral-900 px-4 py-2 bg-neutral-950 text-[#ebeae4] rounded hover:bg-neutral-800 transition-colors cursor-pointer"
+                >
+                  ← BACK TO PORTFOLIO
+                </button>
+              </header>
+
+              {/* Main Content Layout */}
+              <main className="w-full max-w-5xl mx-auto py-4">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                  {/* Left Column: Image, Date, Tags */}
+                  <div className="lg:col-span-5 space-y-6 text-left">
+                    {selectedBlog.image && (
+                      <div className="border border-neutral-950 rounded-lg overflow-hidden bg-neutral-200 aspect-video lg:aspect-square shadow-sm">
+                        <img src={selectedBlog.image} alt={selectedBlog.title} className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                    <div className="font-mono text-xs text-neutral-600 space-y-2.5 pt-4 border-t border-neutral-350">
+                      <p><span className="text-neutral-400 uppercase font-bold">PUBLISH DATE:</span> {selectedBlog.date}</p>
+                      <p><span className="text-neutral-400 uppercase font-bold">RECORD INDEX:</span> B-DAO-{selectedBlog.id.slice(-6).toUpperCase()}</p>
+                      <div className="flex flex-wrap gap-1.5 pt-2">
+                        {selectedBlog.tags.map((tag) => (
+                          <span key={tag} className="border border-neutral-350 bg-neutral-50 px-2 py-0.5 rounded text-[10px] uppercase font-semibold">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Title, Summary, Content */}
+                  <div className="lg:col-span-7 space-y-6 text-left">
+                    <h1 className="font-display text-3xl md:text-5xl font-black tracking-tight text-neutral-950 uppercase leading-none">
+                      {selectedBlog.title}
+                    </h1>
+                    <p className="font-mono text-sm font-bold text-neutral-700 leading-relaxed border-l-4 border-neutral-950 pl-4 py-2 bg-neutral-200/40 pr-4 rounded-r">
+                      {selectedBlog.summary}
+                    </p>
+                    <div className="text-neutral-800 text-sm md:text-base leading-relaxed whitespace-pre-line space-y-4 pt-6 border-t border-neutral-300">
+                      {selectedBlog.content}
+                    </div>
+                  </div>
+                </div>
+              </main>
+            </div>
+
+            {/* Technical overlay footer */}
+            <footer className="mt-16 pt-6 border-t border-dashed border-neutral-400 flex justify-between items-center text-xs font-mono text-neutral-500">
+              <span>COMPILED JOURNAL SPECTRA // milesdao.com</span>
+              <span>SYS_INVENTORY_EXEC</span>
+            </footer>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ==================== DIALOG SYSTEM REGISTRY ==================== */}
+      <AnimatePresence mode="wait">
+        {activeModal === "search" && (
+          <CommandPalette
+            id="search-palette-render"
+            isOpen={true}
+            onClose={() => setActiveModal(null)}
+            onAction={handleAction}
+          />
+        )}
+
+        {activeModal === "admin" && (
+          <AdminModal
+            id="admin-modal-render"
+            isOpen={true}
+            onClose={() => setActiveModal(null)}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

@@ -15,6 +15,22 @@ import PortraitWithKeypoints from "./components/PortraitWithKeypoints";
 import AdminModal from "./components/AdminModal";
 import BlogEditor from "./components/BlogEditor";
 import { getProjects, getBlogs, getCV, getEducationExperience, saveBlog } from "./firebase";
+
+const getBlogPreview = (content: string): string => {
+  if (!content) return "NO CONTENT";
+  if (content.trim().startsWith("[")) {
+    try {
+      const blocks = JSON.parse(content);
+      if (Array.isArray(blocks)) {
+        return blocks.slice(0, 3).map((b: any) => {
+          const text = b.content || "";
+          return text.replace(/<[^>]*>/g, "").trim();
+        }).filter(Boolean).join(" • ") || "NO CONTENT";
+      }
+    } catch {}
+  }
+  return content;
+};
 import { Project, Blog, EducationExperience } from "./types";
 
 const base64ToBlobUrl = (base64Data: string): string => {
@@ -759,7 +775,7 @@ export default function App() {
                         {blog.summary}
                       </p>
                       <p className="text-neutral-600 text-xs mt-3 leading-relaxed line-clamp-2">
-                        {blog.content}
+                        {getBlogPreview(blog.content)}
                       </p>
                     </div>
                   </div>
@@ -877,7 +893,7 @@ export default function App() {
               {/* Main Content Layout */}
               {/* Main Content Layout */}
               <main className="w-full max-w-3xl mx-auto py-4 text-left">
-                <h1 className="font-display text-3xl md:text-5xl lg:text-6xl font-black tracking-tight text-neutral-950 uppercase leading-tight mb-6">
+                <h1 className="font-display text-xl md:text-2xl lg:text-3xl font-black tracking-tight text-neutral-950 uppercase leading-tight mb-6">
                   {selectedBlog.title}
                 </h1>
                 

@@ -2,6 +2,22 @@ import { motion } from "motion/react";
 import { X, Calendar } from "lucide-react";
 import { Blog } from "../types";
 
+const getBlogPreview = (content: string): string => {
+  if (!content) return "NO CONTENT";
+  if (content.trim().startsWith("[")) {
+    try {
+      const blocks = JSON.parse(content);
+      if (Array.isArray(blocks)) {
+        return blocks.slice(0, 3).map((b: any) => {
+          const text = b.content || "";
+          return text.replace(/<[^>]*>/g, "").trim();
+        }).filter(Boolean).join(" • ") || "NO CONTENT";
+      }
+    } catch {}
+  }
+  return content;
+};
+
 interface BlogsModalProps {
   id: string;
   isOpen: boolean;
@@ -84,7 +100,7 @@ export default function BlogsModal({ id, isOpen, onClose, blogs }: BlogsModalPro
                   </p>
 
                   <p className="text-neutral-700 text-sm mt-3 leading-relaxed max-w-xl whitespace-pre-line">
-                    {blog.content}
+                    {getBlogPreview(blog.content)}
                   </p>
 
                   <div className="flex flex-wrap gap-2 mt-4">

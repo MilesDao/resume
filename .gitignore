@@ -6,3 +6,15 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Graphify output
+graphify-out/
+
+# CodeGraph
+.codegraph/codegraph.db
+.codegraph/daemon.pid
